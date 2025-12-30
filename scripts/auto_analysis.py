@@ -76,12 +76,17 @@ def generate_statistics(stat_date):
         DataFrame: 统计结果
     """
     try:
-        # 统计SQL：按实体类型和实体值统计反馈数量
+        # 统计SQL：按反馈聚合，获取每个反馈的实体组合
         stat_sql = f"""
         SELECT 
-            t.type_name AS entity_type,
-            e.entity_value,
-            COUNT(f.feedback_id) AS feedback_count
+            f.feedback_id,
+            MAX(c.feedback_text) AS feedback_text,
+            JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'entity_type', t.type_name,
+                    'entity_value', e.entity_value
+                )
+            ) AS entity_combinations
         FROM 
             feedback_entity_relation f
         JOIN 
@@ -93,9 +98,7 @@ def generate_statistics(stat_date):
         WHERE 
             DATE(c.create_time) = '{stat_date}'
         GROUP BY 
-            t.type_name, e.entity_value
-        ORDER BY 
-            feedback_count DESC
+            f.feedback_id
         """
         
         stat_result = seekdb_client.query_sql(stat_sql)
@@ -104,12 +107,78 @@ def generate_statistics(stat_date):
             logger.info(f"日期 {stat_date} 无反馈数据")
             return pd.DataFrame()
         
-        # 计算占比
-        total_count = stat_result['feedback_count'].sum()
-        stat_result['ratio'] = (stat_result['feedback_count'] / total_count).round(4)
+        # 处理实体组合，生成按实体类型聚合的统计
+        entity_statistics = []
+        total_feedbacks = len(stat_result)
         
-        logger.info(f"成功生成 {len(stat_result)} 条统计结果")
-        return stat_result
+        for _, row in stat_result.iterrows():
+            try:
+                # 解析实体组合JSON
+                entity_combinations = json.loads(row['entity_combinations'])
+                
+                # 创建实体类型到值的映射
+                entity_map = {}
+                for entity in entity_combinations:
+                    entity_type = entity.get('entity_type')
+                    entity_value = entity.get('entity_value')
+                    if entity_type and entity_value:
+                        entity_map[entity_type] = entity_value
+                
+                # 添加到统计列表
+                if entity_map:
+                    entity_statistics.append({
+                        'feedback_id': row['feedback_id'],
+                        'feedback_text': row['feedback_text'],
+                        'entity_map': entity_map
+                    })
+            except Exception as e:
+                logger.warning(f"解析反馈 {row['feedback_id']} 的实体组合失败: {e}")
+                continue
+        
+        if not entity_statistics:
+            logger.info(f"日期 {stat_date} 无有效实体组合数据")
+            return pd.DataFrame()
+        
+        # 按实体类型和值的组合进行统计
+        combination_counts = {}
+        for item in entity_statistics:
+            entity_map = item['entity_map']
+            # 将实体映射转换为可哈希的格式
+            combination_key = str(sorted(entity_map.items()))
+            if combination_key not in combination_counts:
+                combination_counts[combination_key] = {
+                    'count': 0,
+                    'entity_map': entity_map
+                }
+            combination_counts[combination_key]['count'] += 1
+        
+        # 生成最终统计结果
+        final_statistics = []
+        for combo_info in combination_counts.values():
+            # 创建符合要求格式的统计项
+            stat_item = {
+                'entities': []
+            }
+            
+            # 添加所有实体类型和值
+            for entity_type, entity_value in combo_info['entity_map'].items():
+                stat_item['entities'].append({
+                    'entity_type': entity_type,
+                    'entity_value': entity_value
+                })
+            
+            # 添加统计信息
+            stat_item['feedback_count'] = combo_info['count']
+            stat_item['ratio'] = round(combo_info['count'] / total_feedbacks, 4)
+            
+            final_statistics.append(stat_item)
+        
+        # 转换为DataFrame并排序
+        result_df = pd.DataFrame(final_statistics)
+        result_df = result_df.sort_values('feedback_count', ascending=False)
+        
+        logger.info(f"成功生成 {len(result_df)} 条统计结果")
+        return result_df
         
     except Exception as e:
         logger.error(f"生成统计结果失败: {e}")
@@ -241,12 +310,12 @@ def generate_daily_summary(stat_date):
     # 3. 转换统计数据为字典格式
     stat_data = []
     for _, row in stat_df.iterrows():
-        stat_data.append({
-            "entity_type": row['entity_type'],
-            "entity_value": row['entity_value'],
+        stat_item = {
+            "entities": row['entities'],
             "feedback_count": row['feedback_count'],
             "ratio": row['ratio']
-        })
+        }
+        stat_data.append(stat_item)
     
     # 4. 调用Coze进行智能分析
     analysis_text = invoke_coze_analysis(stat_data, stat_date)
