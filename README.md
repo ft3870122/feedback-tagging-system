@@ -4,7 +4,6 @@
 
 ## 项目架构
 
-![系统架构图](https://p3-flow-imagex-sign.byteimg.com/tos-cn-i-a9rns2rl98/b8a9e737ffb343bbada335b547b366b3.png~tplv-a9rns2rl98-image.png?rcl=202512261537438704FE9B01E85643964F&rk3s=8e244e95&rrcfp=dafada99&x-expires=2082958663&x-signature=2Vp8IFewL%2F89Nu%2F612LRLROzUWY%3D)
 
 ### 核心组件
 
