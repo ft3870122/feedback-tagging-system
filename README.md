@@ -151,7 +151,7 @@ echo "* hard nofile 65535" >> /etc/security/limits.conf
 
 ```bash
 # 拉取SeekDB镜像
-docker pull oceanbase/seekdb:latest
+docker pull quay.io/oceanbase/seekdb:latest
 
 # 创建配置文件（可选，推荐）
 cat > /etc/oceanbase/seekdb.cnf <<EOF

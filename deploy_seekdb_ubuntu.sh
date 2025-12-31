@@ -135,7 +135,7 @@ EOF
 # 拉取SeekDB镜像
 pull_seekdb_image() {
     log_info "拉取SeekDB Docker镜像..."
-    docker pull oceanbase/seekdb:latest
+    docker pull quay.io/oceanbase/seekdb:latest
     log_info "镜像拉取完成"
 }
 
@@ -181,7 +181,7 @@ start_seekdb() {
       -v /etc/oceanbase/seekdb.cnf:/etc/oceanbase/seekdb.cnf \
       -v ~/seekdb_data:/root/ob \
       -v ~/seekdb_logs:/var/log/oceanbase \
-      oceanbase/seekdb:latest
+      quay.io/oceanbase/seekdb:latest
 
     log_info "SeekDB容器启动完成"
 }
