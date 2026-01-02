@@ -200,16 +200,20 @@ def store_statistics(stat_df, stat_date):
         seekdb_client.execute_sql(delete_sql)
         
         # 批量插入新的统计结果
+        inserted_count = 0
         for _, row in stat_df.iterrows():
-            seekdb_client.insert("feedback_stat", {
-                "stat_date": stat_date,
-                "entity_type": row['entity_type'],
-                "entity_value": row['entity_value'],
-                "feedback_count": row['feedback_count'],
-                "ratio": row['ratio']
-            })
+            # 遍历每个实体组合中的实体
+            for entity in row['entities']:
+                seekdb_client.insert("feedback_stat", {
+                    "stat_date": stat_date,
+                    "entity_type": entity['entity_type'],
+                    "entity_value": entity['entity_value'],
+                    "feedback_count": row['feedback_count'],
+                    "ratio": row['ratio']
+                })
+                inserted_count += 1
         
-        logger.info(f"成功存储 {len(stat_df)} 条统计结果")
+        logger.info(f"成功存储 {inserted_count} 条统计结果")
         
     except Exception as e:
         logger.error(f"存储统计结果失败: {e}")

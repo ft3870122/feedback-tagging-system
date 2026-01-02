@@ -17,6 +17,7 @@ import sys
 import json
 import requests
 import logging
+import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 from seekdb_client import SeekDBClient
