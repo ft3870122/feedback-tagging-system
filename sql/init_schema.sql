@@ -6,7 +6,7 @@ CREATE TABLE customer_feedback (
   feedback_text TEXT NOT NULL,
   user_id VARCHAR(64),
   create_time DATETIME DEFAULT NOW(),
-  feedback_vector VECTOR(384) GENERATED ALWAYS AS (AI_EMBED(feedback_text)) STORED
+  feedback_vector VECTOR(384)
 );
 
 -- 创建向量索引
@@ -27,7 +27,7 @@ CREATE TABLE entity_vector_lib (
   entity_id VARCHAR(32) PRIMARY KEY DEFAULT (UUID()),
   type_id VARCHAR(32),
   entity_value VARCHAR(128) NOT NULL,
-  entity_vector VECTOR(384) GENERATED ALWAYS AS (AI_EMBED(CONCAT(type_name, ':', entity_value))) STORED,
+  entity_vector VECTOR(384),
   confidence FLOAT DEFAULT 0.95,
   create_time DATETIME DEFAULT NOW(),
   FOREIGN KEY (type_id) REFERENCES dynamic_entity_type(type_id),

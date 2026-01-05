@@ -21,6 +21,8 @@ import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 from seekdb_client import SeekDBClient
+from sentence_transformers import SentenceTransformer
+import numpy as np
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -57,6 +59,18 @@ COZE_INVOKE_URL = f"https://api.coze.com/v1/agent/invoke?agent_id={COZE_AGENT_ID
 # 系统配置
 CONFIDENCE_THRESHOLD = float(os.getenv('CONFIDENCE_THRESHOLD', 0.8))
 BATCH_SIZE = int(os.getenv('BATCH_SIZE', 1000))
+
+# 向量生成配置
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'sentence-transformers/all-MiniLM-L6-v2')
+EMBEDDING_DIMENSION = int(os.getenv('EMBEDDING_DIMENSION', 384))
+
+# 初始化向量生成模型
+try:
+    embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+    logger.info(f"向量生成模型初始化成功: {EMBEDDING_MODEL}")
+except Exception as e:
+    logger.error(f"向量生成模型初始化失败: {e}")
+    sys.exit(1)
 
 # ---------------------- SeekDB客户端初始化 ----------------------
 try:
@@ -115,6 +129,27 @@ def invoke_coze_entity_recognize(feedback_text):
         return []
 
 
+def generate_embedding(text):
+    """
+    生成文本向量
+    
+    Args:
+        text (str): 输入文本
+        
+    Returns:
+        str: 向量字符串
+    """
+    try:
+        # 使用sentence-transformers生成向量
+        embedding = embedding_model.encode(text, convert_to_numpy=True)
+        # 转换为字符串格式，适应数据库存储
+        embedding_str = ','.join(map(str, embedding.tolist()))
+        return embedding_str
+    except Exception as e:
+        logger.error(f"向量生成失败: {e}")
+        return None
+
+
 def insert_entity_to_seekdb(entity_item):
     """
     将Coze识别的实体写入标签向量库
@@ -147,7 +182,15 @@ def insert_entity_to_seekdb(entity_item):
         
         type_id = type_result['type_id'].iloc[0]
         
-        # 2. 新增实体值（去重处理）
+        # 2. 生成实体向量
+        entity_text = f"{type_name}:{entity_value}"
+        entity_vector = generate_embedding(entity_text)
+        
+        if not entity_vector:
+            logger.error(f"实体向量生成失败: {entity_text}")
+            return None, None
+        
+        # 3. 新增实体值（去重处理）
         entity_sql = "SELECT entity_id FROM entity_vector_lib WHERE type_id = %s AND entity_value = %s"
         entity_result = seekdb_client.query_sql(entity_sql, params=[type_id, entity_value])
         
@@ -156,6 +199,7 @@ def insert_entity_to_seekdb(entity_item):
             seekdb_client.insert("entity_vector_lib", {
                 "type_id": type_id,
                 "entity_value": entity_value,
+                "entity_vector": entity_vector,
                 "confidence": coze_confidence
             })
             entity_result = seekdb_client.query_sql(entity_sql, params=[type_id, entity_value])
@@ -269,7 +313,7 @@ def write_re_tag_detail(feedback_id, entity_id, coze_confidence):
 
 def get_untagged_feedback(batch_size=BATCH_SIZE):
     """
-    获取待打标明细
+    获取待打标明细，并为没有向量的反馈生成向量
     对应架构图中的“待打标明细”
     
     Args:
@@ -281,7 +325,8 @@ def get_untagged_feedback(batch_size=BATCH_SIZE):
     untagged_sql = """
     SELECT 
         feedback_id, 
-        feedback_text 
+        feedback_text, 
+        feedback_vector
     FROM 
         customer_feedback 
     WHERE 
@@ -292,6 +337,22 @@ def get_untagged_feedback(batch_size=BATCH_SIZE):
     try:
         untagged_df = seekdb_client.query_sql(untagged_sql, params=[batch_size])
         logger.info(f"获取到 {len(untagged_df)} 条待打标反馈")
+        
+        # 为没有向量的反馈生成向量
+        for index, row in untagged_df.iterrows():
+            if not row['feedback_vector'] or pd.isna(row['feedback_vector']):
+                # 生成向量
+                feedback_vector = generate_embedding(row['feedback_text'])
+                if feedback_vector:
+                    # 更新数据库中的向量
+                    update_sql = """
+                    UPDATE customer_feedback 
+                    SET feedback_vector = %s 
+                    WHERE feedback_id = %s
+                    """
+                    seekdb_client.execute_sql(update_sql, params=[feedback_vector, row['feedback_id']])
+                    logger.info(f"为反馈 {row['feedback_id']} 生成并更新向量")
+        
         return untagged_df
     except Exception as e:
         logger.error(f"获取待打标反馈失败: {e}")

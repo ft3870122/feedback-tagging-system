@@ -334,10 +334,22 @@ CONFIDENCE_THRESHOLD=0.8
 BATCH_SIZE=100
 LOG_LEVEL=INFO
 
-# 向量生成配置（如使用本地模型）
+# 向量生成配置
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 EMBEDDING_DIMENSION=384
-```
+
+## 向量生成说明
+
+由于SeekDB不支持自动向量生成，向量生成需要在应用层进行。系统将使用Python的sentence-transformers库生成向量，然后存储到数据库中。
+
+### 生成向量的步骤：
+1. 安装向量生成依赖：`pip install sentence-transformers numpy torch`
+2. 系统会在处理反馈数据时自动生成向量
+3. 向量维度需与数据库中定义的VECTOR(384)一致
+
+### 环境变量配置：
+- EMBEDDING_MODEL：指定使用的向量模型（默认为sentence-transformers/all-MiniLM-L6-v2）
+- EMBEDDING_DIMENSION：向量维度（必须与数据库表定义一致，默认为384）
 
 #### SeekDB高级配置
 
