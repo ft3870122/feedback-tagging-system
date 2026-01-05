@@ -2,7 +2,7 @@
 
 -- 1. 全量客服反馈明细（对应架构图中的“全量客服反馈明细”）
 CREATE TABLE customer_feedback (
-  feedback_id VARCHAR(32) PRIMARY KEY DEFAULT (UUID()),
+  feedback_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   feedback_text TEXT NOT NULL,
   user_id VARCHAR(64),
   create_time DATETIME DEFAULT NOW(),
@@ -17,15 +17,15 @@ CREATE FULLTEXT INDEX idx_feedback_text ON customer_feedback (feedback_text);
 
 -- 2. 动态实体类型表（对应架构图中的“标签类型”）
 CREATE TABLE dynamic_entity_type (
-  type_id VARCHAR(32) PRIMARY KEY DEFAULT (UUID()),
+  type_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   type_name VARCHAR(64) UNIQUE NOT NULL,
   create_time DATETIME DEFAULT NOW()
 );
 
 -- 3. 标签向量库（对应架构图中的“标签向量库”）
 CREATE TABLE entity_vector_lib (
-  entity_id VARCHAR(32) PRIMARY KEY DEFAULT (UUID()),
-  type_id VARCHAR(32),
+  entity_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  type_id VARCHAR(36),
   entity_value VARCHAR(128) NOT NULL,
   entity_vector VECTOR(384),
   confidence FLOAT DEFAULT 0.95,
@@ -42,9 +42,9 @@ CREATE FULLTEXT INDEX idx_entity_value ON entity_vector_lib (entity_value);
 
 -- 4. 反馈-实体关联表（对应架构图中的“反馈明细+打标结果”）
 CREATE TABLE feedback_entity_relation (
-  relation_id VARCHAR(32) PRIMARY KEY DEFAULT (UUID()),
-  feedback_id VARCHAR(32),
-  entity_id VARCHAR(32),
+  relation_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  feedback_id VARCHAR(36),
+  entity_id VARCHAR(36),
   match_confidence FLOAT,
   create_time DATETIME DEFAULT NOW(),
   FOREIGN KEY (feedback_id) REFERENCES customer_feedback(feedback_id),
@@ -57,9 +57,9 @@ CREATE INDEX idx_entity_feedback ON feedback_entity_relation (entity_id);
 
 -- 5. 实体沉淀日志表（对应架构图中的“重新打标明细”）
 CREATE TABLE entity_precipitation_log (
-  log_id VARCHAR(32) PRIMARY KEY DEFAULT (UUID()),
-  feedback_id VARCHAR(32),
-  entity_id VARCHAR(32),
+  log_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  feedback_id VARCHAR(36),
+  entity_id VARCHAR(36),
   coze_confidence FLOAT,
   create_time DATETIME DEFAULT NOW(),
   FOREIGN KEY (feedback_id) REFERENCES customer_feedback(feedback_id),
@@ -71,7 +71,7 @@ CREATE INDEX idx_precipitation_feedback ON entity_precipitation_log (feedback_id
 
 -- 6. 统计结果表（对应架构图中的“统计结果”）
 CREATE TABLE feedback_stat (
-  stat_id VARCHAR(32) PRIMARY KEY DEFAULT (UUID()),
+  stat_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   stat_date DATE NOT NULL,
   entity_type VARCHAR(64) NOT NULL,
   entity_value VARCHAR(128) NOT NULL,
@@ -86,7 +86,7 @@ CREATE INDEX idx_stat_type ON feedback_stat (entity_type);
 
 -- 7. AI分析总结表（对应架构图中的“总结存储”）
 CREATE TABLE ai_analysis_result (
-  analysis_id VARCHAR(32) PRIMARY KEY DEFAULT (UUID()),
+  analysis_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   stat_date DATE NOT NULL,
   analysis_text TEXT NOT NULL,
   create_time DATETIME DEFAULT NOW()
