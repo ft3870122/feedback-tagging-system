@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS customer_feedback (
   feedback_vector VECTOR(384)
 );
 
--- 创建向量索引
-CREATE INDEX IF NOT EXISTS idx_feedback_vector ON customer_feedback (feedback_vector);
+-- 注释掉向量索引，SeekDB/OceanBase不支持直接在向量列上创建索引
+-- CREATE INDEX IF NOT EXISTS idx_feedback_vector ON customer_feedback (feedback_vector);
 
 -- 创建文本索引（用于关键词匹配）
 CREATE FULLTEXT INDEX IF NOT EXISTS idx_feedback_text ON customer_feedback (feedback_text);
@@ -38,8 +38,8 @@ CREATE TABLE IF NOT EXISTS entity_vector_lib (
   UNIQUE (type_id, entity_value)
 );
 
--- 创建向量索引
-CREATE INDEX IF NOT EXISTS idx_entity_vector ON entity_vector_lib (entity_vector);
+-- 注释掉向量索引，SeekDB/OceanBase不支持直接在向量列上创建索引
+-- CREATE INDEX IF NOT EXISTS idx_entity_vector ON entity_vector_lib (entity_vector);
 
 -- 创建文本索引
 CREATE FULLTEXT INDEX IF NOT EXISTS idx_entity_value ON entity_vector_lib (entity_value);
