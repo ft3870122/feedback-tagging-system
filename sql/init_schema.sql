@@ -1,7 +1,11 @@
 -- 客服反馈自动打标系统 - 数据库初始化脚本
 
+-- 创建数据库（如果不存在）
+CREATE DATABASE IF NOT EXISTS feedback_db;
+USE feedback_db;
+
 -- 1. 全量客服反馈明细（对应架构图中的“全量客服反馈明细”）
-CREATE TABLE customer_feedback (
+CREATE TABLE IF NOT EXISTS customer_feedback (
   feedback_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   feedback_text TEXT NOT NULL,
   user_id VARCHAR(64),
@@ -10,20 +14,20 @@ CREATE TABLE customer_feedback (
 );
 
 -- 创建向量索引
-CREATE INDEX idx_feedback_vector ON customer_feedback (feedback_vector) USING HNSW;
+CREATE INDEX IF NOT EXISTS idx_feedback_vector ON customer_feedback (feedback_vector) USING HNSW;
 
 -- 创建文本索引（用于关键词匹配）
-CREATE FULLTEXT INDEX idx_feedback_text ON customer_feedback (feedback_text);
+CREATE FULLTEXT INDEX IF NOT EXISTS idx_feedback_text ON customer_feedback (feedback_text);
 
 -- 2. 动态实体类型表（对应架构图中的“标签类型”）
-CREATE TABLE dynamic_entity_type (
+CREATE TABLE IF NOT EXISTS dynamic_entity_type (
   type_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   type_name VARCHAR(64) UNIQUE NOT NULL,
   create_time DATETIME DEFAULT NOW()
 );
 
 -- 3. 标签向量库（对应架构图中的“标签向量库”）
-CREATE TABLE entity_vector_lib (
+CREATE TABLE IF NOT EXISTS entity_vector_lib (
   entity_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   type_id VARCHAR(36),
   entity_value VARCHAR(128) NOT NULL,
@@ -35,13 +39,13 @@ CREATE TABLE entity_vector_lib (
 );
 
 -- 创建向量索引
-CREATE INDEX idx_entity_vector ON entity_vector_lib (entity_vector) USING HNSW;
+CREATE INDEX IF NOT EXISTS idx_entity_vector ON entity_vector_lib (entity_vector) USING HNSW;
 
 -- 创建文本索引
-CREATE FULLTEXT INDEX idx_entity_value ON entity_vector_lib (entity_value);
+CREATE FULLTEXT INDEX IF NOT EXISTS idx_entity_value ON entity_vector_lib (entity_value);
 
 -- 4. 反馈-实体关联表（对应架构图中的“反馈明细+打标结果”）
-CREATE TABLE feedback_entity_relation (
+CREATE TABLE IF NOT EXISTS feedback_entity_relation (
   relation_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   feedback_id VARCHAR(36),
   entity_id VARCHAR(36),
@@ -52,11 +56,11 @@ CREATE TABLE feedback_entity_relation (
 );
 
 -- 创建索引
-CREATE INDEX idx_feedback_entity ON feedback_entity_relation (feedback_id);
-CREATE INDEX idx_entity_feedback ON feedback_entity_relation (entity_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_entity ON feedback_entity_relation (feedback_id);
+CREATE INDEX IF NOT EXISTS idx_entity_feedback ON feedback_entity_relation (entity_id);
 
 -- 5. 实体沉淀日志表（对应架构图中的“重新打标明细”）
-CREATE TABLE entity_precipitation_log (
+CREATE TABLE IF NOT EXISTS entity_precipitation_log (
   log_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   feedback_id VARCHAR(36),
   entity_id VARCHAR(36),
@@ -67,10 +71,10 @@ CREATE TABLE entity_precipitation_log (
 );
 
 -- 创建索引
-CREATE INDEX idx_precipitation_feedback ON entity_precipitation_log (feedback_id);
+CREATE INDEX IF NOT EXISTS idx_precipitation_feedback ON entity_precipitation_log (feedback_id);
 
 -- 6. 统计结果表（对应架构图中的“统计结果”）
-CREATE TABLE feedback_stat (
+CREATE TABLE IF NOT EXISTS feedback_stat (
   stat_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   stat_date DATE NOT NULL,
   entity_type VARCHAR(64) NOT NULL,
@@ -81,11 +85,11 @@ CREATE TABLE feedback_stat (
 );
 
 -- 创建索引
-CREATE INDEX idx_stat_date ON feedback_stat (stat_date);
-CREATE INDEX idx_stat_type ON feedback_stat (entity_type);
+CREATE INDEX IF NOT EXISTS idx_stat_date ON feedback_stat (stat_date);
+CREATE INDEX IF NOT EXISTS idx_stat_type ON feedback_stat (entity_type);
 
 -- 7. AI分析总结表（对应架构图中的“总结存储”）
-CREATE TABLE ai_analysis_result (
+CREATE TABLE IF NOT EXISTS ai_analysis_result (
   analysis_id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
   stat_date DATE NOT NULL,
   analysis_text TEXT NOT NULL,
@@ -93,7 +97,7 @@ CREATE TABLE ai_analysis_result (
 );
 
 -- 创建索引
-CREATE INDEX idx_analysis_date ON ai_analysis_result (stat_date);
+CREATE INDEX IF NOT EXISTS idx_analysis_date ON ai_analysis_result (stat_date);
 
 -- 插入示例数据（可选）
 INSERT INTO dynamic_entity_type (type_name) VALUES 
