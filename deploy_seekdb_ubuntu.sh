@@ -178,7 +178,6 @@ start_seekdb() {
       -e DATAFILE_SIZE=2G \
       -e DATAFILE_NEXT=2G \
       -e DATAFILE_MAXSIZE=50G \
-      -v /etc/oceanbase/seekdb.cnf:/etc/oceanbase/seekdb.cnf \
       -v ~/seekdb_data:/root/ob \
       -v ~/seekdb_logs:/var/log/oceanbase \
       quay.io/oceanbase/seekdb:latest
