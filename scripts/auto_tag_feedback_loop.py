@@ -20,9 +20,9 @@ import logging
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
-from seekdb_client import SeekDBClient
-from sentence_transformers import SentenceTransformer
+import pymysql
 import numpy as np
+from sentence_transformers import SentenceTransformer
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -72,12 +72,67 @@ except Exception as e:
     logger.error(f"向量生成模型初始化失败: {e}")
     sys.exit(1)
 
-# ---------------------- SeekDB客户端初始化 ----------------------
+# ---------------------- 数据库客户端类 ----------------------
+class DatabaseClient:
+    def __init__(self, **config):
+        self.config = config
+        self.connection = None
+        self.connect()
+    
+    def connect(self):
+        """建立数据库连接"""
+        try:
+            self.connection = pymysql.connect(
+                host=self.config['host'],
+                port=self.config['port'],
+                user=self.config['user'],
+                password=self.config['password'],
+                database=self.config['database'],
+                charset='utf8mb4',
+                cursorclass=pymysql.cursors.DictCursor
+            )
+        except Exception as e:
+            raise Exception(f"数据库连接失败: {e}")
+    
+    def query_sql(self, sql, params=None):
+        """执行查询SQL并返回DataFrame"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                result = cursor.fetchall()
+                return pd.DataFrame(result)
+        except Exception as e:
+            raise Exception(f"查询执行失败: {e}")
+    
+    def execute_sql(self, sql, params=None):
+        """执行SQL语句（更新、删除等）"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                self.connection.commit()
+                return cursor.rowcount
+        except Exception as e:
+            self.connection.rollback()
+            raise Exception(f"SQL执行失败: {e}")
+    
+    def insert(self, table, data):
+        """插入数据到指定表"""
+        if not data:
+            return 0
+        
+        columns = ', '.join(data.keys())
+        placeholders = ', '.join(['%s'] * len(data))
+        values = list(data.values())
+        
+        sql = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+        return self.execute_sql(sql, values)
+
+# ---------------------- 数据库客户端初始化 ----------------------
 try:
-    seekdb_client = SeekDBClient(**SEEKDB_CONFIG)
-    logger.info("SeekDB客户端初始化成功")
+    db_client = DatabaseClient(**SEEKDB_CONFIG)
+    logger.info("数据库客户端初始化成功")
 except Exception as e:
-    logger.error(f"SeekDB客户端初始化失败: {e}")
+    logger.error(f"数据库客户端初始化失败: {e}")
     sys.exit(1)
 
 # ---------------------- 核心函数 ----------------------
@@ -172,12 +227,12 @@ def insert_entity_to_seekdb(entity_item):
     try:
         # 1. 新增实体类型（不存在则插入）
         type_sql = "SELECT type_id FROM dynamic_entity_type WHERE type_name = %s"
-        type_result = seekdb_client.query_sql(type_sql, params=[type_name])
+        type_result = db_client.query_sql(type_sql, params=[type_name])
         
         if type_result.empty:
             # 插入新的实体类型
-            seekdb_client.insert("dynamic_entity_type", {"type_name": type_name})
-            type_result = seekdb_client.query_sql(type_sql, params=[type_name])
+            db_client.insert("dynamic_entity_type", {"type_name": type_name})
+            type_result = db_client.query_sql(type_sql, params=[type_name])
             logger.info(f"新增实体类型: {type_name}")
         
         type_id = type_result['type_id'].iloc[0]
@@ -192,17 +247,17 @@ def insert_entity_to_seekdb(entity_item):
         
         # 3. 新增实体值（去重处理）
         entity_sql = "SELECT entity_id FROM entity_vector_lib WHERE type_id = %s AND entity_value = %s"
-        entity_result = seekdb_client.query_sql(entity_sql, params=[type_id, entity_value])
+        entity_result = db_client.query_sql(entity_sql, params=[type_id, entity_value])
         
         if entity_result.empty:
             # 插入新的实体值
-            seekdb_client.insert("entity_vector_lib", {
+            db_client.insert("entity_vector_lib", {
                 "type_id": type_id,
                 "entity_value": entity_value,
                 "entity_vector": entity_vector,
                 "confidence": coze_confidence
             })
-            entity_result = seekdb_client.query_sql(entity_sql, params=[type_id, entity_value])
+            entity_result = db_client.query_sql(entity_sql, params=[type_id, entity_value])
             logger.info(f"新增实体值: {type_name}:{entity_value}")
         
         entity_id = entity_result['entity_id'].iloc[0]
@@ -210,13 +265,13 @@ def insert_entity_to_seekdb(entity_item):
         return entity_id, coze_confidence
         
     except Exception as e:
-        logger.error(f"实体写入SeekDB失败: {e}")
+        logger.error(f"实体写入数据库失败: {e}")
         return None, None
 
 
 def seekdb_match_entity(feedback_id):
     """
-    SeekDB混合检索匹配实体
+    混合检索匹配实体
     对应架构图中的“匹配打标”
     
     Args:
@@ -232,7 +287,7 @@ def seekdb_match_entity(feedback_id):
         FROM customer_feedback 
         WHERE feedback_id = %s
         """
-        feedback_result = seekdb_client.query_sql(feedback_sql, params=[feedback_id])
+        feedback_result = db_client.query_sql(feedback_sql, params=[feedback_id])
         
         if feedback_result.empty:
             logger.warning(f"反馈ID不存在: {feedback_id}")
@@ -247,25 +302,25 @@ def seekdb_match_entity(feedback_id):
             e.entity_id, 
             t.type_name, 
             e.entity_value,
-            VECTOR_SIMILARITY(e.entity_vector, '{feedback_vector}') AS match_confidence
+            VECTOR_SIMILARITY(e.entity_vector, %s) AS match_confidence
         FROM 
             entity_vector_lib e
         JOIN 
             dynamic_entity_type t ON e.type_id = t.type_id
         WHERE 
-            VECTOR_SIMILARITY(e.entity_vector, '{feedback_vector}') > 0.5
-            AND MATCH(e.entity_value) AGAINST('{feedback_text}')
+            VECTOR_SIMILARITY(e.entity_vector, %s) > 0.5
+            AND MATCH(e.entity_value) AGAINST(%s IN NATURAL LANGUAGE MODE)
         ORDER BY 
             match_confidence DESC
         """
         
-        match_result = seekdb_client.query_sql(match_sql).to_dict('records')
-        logger.info(f"SeekDB匹配到 {len(match_result)} 个实体")
+        match_result = db_client.query_sql(match_sql, params=[feedback_vector, feedback_vector, feedback_text]).to_dict('records')
+        logger.info(f"匹配到 {len(match_result)} 个实体")
         
         return match_result
         
     except Exception as e:
-        logger.error(f"SeekDB实体匹配失败: {e}")
+        logger.error(f"实体匹配失败: {e}")
         return []
 
 
@@ -280,7 +335,7 @@ def write_tag_result(feedback_id, entity_id, match_confidence):
         match_confidence (float): 匹配置信度
     """
     try:
-        seekdb_client.insert("feedback_entity_relation", {
+        db_client.insert("feedback_entity_relation", {
             "feedback_id": feedback_id,
             "entity_id": entity_id,
             "match_confidence": match_confidence
@@ -301,7 +356,7 @@ def write_re_tag_detail(feedback_id, entity_id, coze_confidence):
         coze_confidence (float): Coze识别置信度
     """
     try:
-        seekdb_client.insert("entity_precipitation_log", {
+        db_client.insert("entity_precipitation_log", {
             "feedback_id": feedback_id,
             "entity_id": entity_id,
             "coze_confidence": coze_confidence
@@ -335,7 +390,7 @@ def get_untagged_feedback(batch_size=BATCH_SIZE):
     """
     
     try:
-        untagged_df = seekdb_client.query_sql(untagged_sql, params=[batch_size])
+        untagged_df = db_client.query_sql(untagged_sql, params=[batch_size])
         logger.info(f"获取到 {len(untagged_df)} 条待打标反馈")
         
         # 为没有向量的反馈生成向量
@@ -350,7 +405,7 @@ def get_untagged_feedback(batch_size=BATCH_SIZE):
                     SET feedback_vector = %s 
                     WHERE feedback_id = %s
                     """
-                    seekdb_client.execute_sql(update_sql, params=[feedback_vector, row['feedback_id']])
+                    db_client.execute_sql(update_sql, params=[feedback_vector, row['feedback_id']])
                     logger.info(f"为反馈 {row['feedback_id']} 生成并更新向量")
         
         return untagged_df

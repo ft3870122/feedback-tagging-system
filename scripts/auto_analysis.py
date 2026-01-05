@@ -17,7 +17,7 @@ import logging
 import pandas as pd
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from seekdb_client import SeekDBClient
+import pymysql
 
 # 添加项目根目录到Python路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -54,12 +54,67 @@ COZE_INVOKE_URL = f"https://api.coze.com/v1/agent/invoke?agent_id={COZE_AGENT_ID
 # 系统配置
 ANALYSIS_DATE = os.getenv('ANALYSIS_DATE', (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'))
 
-# ---------------------- SeekDB客户端初始化 ----------------------
+# ---------------------- 数据库客户端类 ----------------------
+class DatabaseClient:
+    def __init__(self, **config):
+        self.config = config
+        self.connection = None
+        self.connect()
+    
+    def connect(self):
+        """建立数据库连接"""
+        try:
+            self.connection = pymysql.connect(
+                host=self.config['host'],
+                port=self.config['port'],
+                user=self.config['user'],
+                password=self.config['password'],
+                database=self.config['database'],
+                charset='utf8mb4',
+                cursorclass=pymysql.cursors.DictCursor
+            )
+        except Exception as e:
+            raise Exception(f"数据库连接失败: {e}")
+    
+    def query_sql(self, sql, params=None):
+        """执行查询SQL并返回DataFrame"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                result = cursor.fetchall()
+                return pd.DataFrame(result)
+        except Exception as e:
+            raise Exception(f"查询执行失败: {e}")
+    
+    def execute_sql(self, sql, params=None):
+        """执行SQL语句（更新、删除等）"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                self.connection.commit()
+                return cursor.rowcount
+        except Exception as e:
+            self.connection.rollback()
+            raise Exception(f"SQL执行失败: {e}")
+    
+    def insert(self, table, data):
+        """插入数据到指定表"""
+        if not data:
+            return 0
+        
+        columns = ', '.join(data.keys())
+        placeholders = ', '.join(['%s'] * len(data))
+        values = list(data.values())
+        
+        sql = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+        return self.execute_sql(sql, values)
+
+# ---------------------- 数据库客户端初始化 ----------------------
 try:
-    seekdb_client = SeekDBClient(**SEEKDB_CONFIG)
-    logger.info("SeekDB客户端初始化成功")
+    db_client = DatabaseClient(**SEEKDB_CONFIG)
+    logger.info("数据库客户端初始化成功")
 except Exception as e:
-    logger.error(f"SeekDB客户端初始化失败: {e}")
+    logger.error(f"数据库客户端初始化失败: {e}")
     sys.exit(1)
 
 # ---------------------- 核心函数 ----------------------
@@ -101,7 +156,7 @@ def generate_statistics(stat_date):
             f.feedback_id
         """
         
-        stat_result = seekdb_client.query_sql(stat_sql)
+        stat_result = db_client.query_sql(stat_sql)
         
         if stat_result.empty:
             logger.info(f"日期 {stat_date} 无反馈数据")
@@ -197,14 +252,14 @@ def store_statistics(stat_df, stat_date):
     try:
         # 先删除当天已有的统计结果
         delete_sql = f"DELETE FROM feedback_stat WHERE stat_date = '{stat_date}'"
-        seekdb_client.execute_sql(delete_sql)
+        db_client.execute_sql(delete_sql)
         
         # 批量插入新的统计结果
         inserted_count = 0
         for _, row in stat_df.iterrows():
             # 遍历每个实体组合中的实体
             for entity in row['entities']:
-                seekdb_client.insert("feedback_stat", {
+                db_client.insert("feedback_stat", {
                     "stat_date": stat_date,
                     "entity_type": entity['entity_type'],
                     "entity_value": entity['entity_value'],
@@ -277,10 +332,10 @@ def store_analysis_result(analysis_text, stat_date):
     try:
         # 先删除当天已有的分析结果
         delete_sql = f"DELETE FROM ai_analysis_result WHERE stat_date = '{stat_date}'"
-        seekdb_client.execute_sql(delete_sql)
+        db_client.execute_sql(delete_sql)
         
         # 插入新的分析结果
-        seekdb_client.insert("ai_analysis_result", {
+        db_client.insert("ai_analysis_result", {
             "stat_date": stat_date,
             "analysis_text": analysis_text
         })
@@ -349,7 +404,7 @@ def generate_system_metrics(stat_date):
         FROM customer_feedback 
         WHERE DATE(create_time) = '{stat_date}'
         """
-        total_feedback = seekdb_client.query_sql(total_feedback_sql).iloc[0]['total_count']
+        total_feedback = db_client.query_sql(total_feedback_sql).iloc[0]['total_count']
         
         # 2. 已打标反馈量
         tagged_feedback_sql = f"""
@@ -358,7 +413,7 @@ def generate_system_metrics(stat_date):
         JOIN customer_feedback c ON f.feedback_id = c.feedback_id
         WHERE DATE(c.create_time) = '{stat_date}'
         """
-        tagged_feedback = seekdb_client.query_sql(tagged_feedback_sql).iloc[0]['tagged_count']
+        tagged_feedback = db_client.query_sql(tagged_feedback_sql).iloc[0]['tagged_count']
         
         # 3. Coze调用量
         coze_call_sql = f"""
@@ -367,7 +422,7 @@ def generate_system_metrics(stat_date):
         JOIN customer_feedback c ON l.feedback_id = c.feedback_id
         WHERE DATE(c.create_time) = '{stat_date}'
         """
-        coze_call = seekdb_client.query_sql(coze_call_sql).iloc[0]['coze_call_count']
+        coze_call = db_client.query_sql(coze_call_sql).iloc[0]['coze_call_count']
         
         # 4. 新实体沉淀量
         new_entity_sql = f"""
@@ -375,7 +430,7 @@ def generate_system_metrics(stat_date):
         FROM entity_vector_lib
         WHERE DATE(create_time) = '{stat_date}'
         """
-        new_entity = seekdb_client.query_sql(new_entity_sql).iloc[0]['new_entity_count']
+        new_entity = db_client.query_sql(new_entity_sql).iloc[0]['new_entity_count']
         
         metrics = {
             "stat_date": stat_date,

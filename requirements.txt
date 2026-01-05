@@ -6,8 +6,8 @@ requests>=2.28.0
 # 数据处理库
 pandas>=1.5.0
 
-# SeekDB客户端（根据实际情况调整版本）
-seekdb-client>=1.0.0
+# SeekDB客户端（使用pymysql替代，因为seekdb-client包不可用）
+pymysql>=1.0.0
 
 # 环境变量管理
 python-dotenv>=0.20.0
