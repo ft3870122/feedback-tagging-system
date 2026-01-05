@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS customer_feedback (
 );
 
 -- 创建向量索引
-CREATE INDEX IF NOT EXISTS idx_feedback_vector ON customer_feedback (feedback_vector) USING HNSW;
+CREATE INDEX IF NOT EXISTS idx_feedback_vector ON customer_feedback (feedback_vector);
 
 -- 创建文本索引（用于关键词匹配）
 CREATE FULLTEXT INDEX IF NOT EXISTS idx_feedback_text ON customer_feedback (feedback_text);
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS entity_vector_lib (
 );
 
 -- 创建向量索引
-CREATE INDEX IF NOT EXISTS idx_entity_vector ON entity_vector_lib (entity_vector) USING HNSW;
+CREATE INDEX IF NOT EXISTS idx_entity_vector ON entity_vector_lib (entity_vector);
 
 -- 创建文本索引
 CREATE FULLTEXT INDEX IF NOT EXISTS idx_entity_value ON entity_vector_lib (entity_value);
